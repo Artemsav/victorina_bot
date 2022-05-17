@@ -20,8 +20,9 @@ for chunk in raw_quiz:
         answer.append(chunk)
 quiest_answer = zip(quiestions, answer)
 for quiestions, answers in quiest_answer:
-    print(quiestions.split(':\n'), len(quiestions.split(':\n')))
-    _, quiestion = quiestions.split(':\n')
+    _, *quiestion = quiestions.split(':\n')
+    if type(quiestion)==list:
+        quiestion = ' '.join([str(words) for words in quiestion])
     _, answer = answers.split(':')
     victorina_quiz[quiestion]=answer
-print(victorina_quiz)
+pprint(victorina_quiz, indent=4)
