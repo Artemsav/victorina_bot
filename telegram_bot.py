@@ -1,11 +1,14 @@
 import logging
 import os
+import re
+from secrets import choice
 
 from dotenv import load_dotenv
 from telegram import Update, ForceReply, Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
 from logging_handler import TelegramLogsHandler
-
+import random
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +31,38 @@ def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Привет! Я бот для викторин', reply_markup=reply_markup)
 
 
-def echo_messages(update: Update, context: CallbackContext) -> None:
-    """Handle the answer message from dialogflow on the user message."""
-    update.message.reply_text(update.message.text)
+def check_messages(update: Update, context: CallbackContext) -> None:
+    """Handle the answer on the user message."""
+    user_id = update.message.from_user.id
+    answer = redis_base.get(user_id)
+    logger.info(answer)
+    if update.message.text==answer:
+        update.message.reply_text('Правильно!')
+    else:
+        update.message.reply_text(f'Не правильно, вот корректный ответ {answer}')
 
 
 def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
-
-    update.message.edit_text(text="Selected option: {}".format(query.data))
+    user_id = query.from_user.id
+    if query.data == '1':
+        logger.info(f'{query.data} in if')
+        folder = 'quiz-questions/'
+        key, value = random.choice(list(fetch_victorins(folder).items()))
+        logger.info(f'{value}')
+        redis_base.set(user_id, key)
+        query.edit_message_text(text=f"{key}") 
 
 
 def fetch_victorins(folder):
     victorina_quiz = {}
     quiestions = []
     answers = []
-    all_victorins = os.listdir(folder)
+    #os.listdir(folder)
+    all_victorins = [1]
     for victorin in all_victorins:
-        with open(os.path.join(folder, victorin), encoding='KOI8-R') as file:
+        #os.path.join(folder, victorin)
+        with open('quiz-questions/9gag.txt', encoding='KOI8-R') as file:
             text = file.read()
         raw_quiz = text.split(sep='\n\n')
         for chunk in raw_quiz:
@@ -59,14 +76,30 @@ def fetch_victorins(folder):
             if type(quiestion)==list:
                 quiestion = ' '.join(quiestion)
             _, *answer = ans.split(':')
+            if type(answer)==list:
+                answer = ''.join(answer)
             victorina_quiz[quiestion]=answer
     return victorina_quiz
+
+
+
+
+def error(bot, update, error):
+    """Log Errors caused by Updates."""
+    logger.warning('Update "%s" caused error "%s"', update, error)
 
 
 def main():
     load_dotenv()
     token = os.getenv('TOKEN_TELEGRAM')
     user_id = os.getenv('TG_USER_ID')
+    redis_host = os.getenv('REDDIS_HOST')
+    redis_port = os.getenv('REDDIS_PORT')
+    redis_pass = os.getenv('REDDIS_PASS')
+    folder = 'quiz-questions/'
+    victorins= fetch_victorins(folder)
+    global redis_base
+    redis_base = redis.Redis(host=redis_host, port=redis_port, password=redis_pass)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
     logging.basicConfig(
@@ -80,7 +113,7 @@ def main():
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CallbackQueryHandler(button))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo_messages))
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, check_messages))
     updater.start_polling()
     updater.idle()
 
