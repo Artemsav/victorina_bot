@@ -1,37 +1,38 @@
 import logging
 import os
-import re
-from secrets import choice
 
 from dotenv import load_dotenv
-from telegram import Update, ForceReply, Bot, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
+from telegram import Update, ForceReply, Bot, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, InlineQueryHandler, ConversationHandler
 from logging_handler import TelegramLogsHandler
 import random
 import redis
+from functools import partial
 
 logger = logging.getLogger(__name__)
 
+QUISTION, SCORE, CHECK = range(3)
 
-def start(update: Update, context: CallbackContext) -> None:
-    """Send a message when the command /start is issued."""
-    '''user = update.effective_user
-    update.message.reply_markdown_v2(
-        fr'Привет {user.mention_markdown_v2()}\!',
-        reply_markup=ForceReply(selective=True),
-    )'''
+
+def menu(update: Update, context: CallbackContext) -> None:
     keyboard = [
         [
-            InlineKeyboardButton("Новый вопрос", callback_data='1'),
-            InlineKeyboardButton("Сдаться", callback_data='2')
+            "Новый вопрос",
+            "Сдаться", 
             ],
-            [InlineKeyboardButton("Мой счет", callback_data='3')]
+            ["Мой счет"]
         ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Привет! Я бот для викторин', reply_markup=reply_markup)
+    reply_markup = ReplyKeyboardMarkup(keyboard)
+    return reply_markup
 
 
-def check_messages(update: Update, context: CallbackContext) -> None:
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Привет! Я бот для викторин', reply_markup=menu(update, context))
+
+    return QUISTION
+
+
+def handle_solution_attempt(update: Update, context: CallbackContext) -> None:
     """Handle the answer on the user message."""
     user_id = update.message.from_user.id
     question = redis_base.get(user_id)
@@ -39,20 +40,35 @@ def check_messages(update: Update, context: CallbackContext) -> None:
     decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
     logger.info(decoded_answer)
     if update.message.text == decoded_answer:
-        update.message.reply_text('Правильно!')
+        update.message.reply_text('Правильно!', reply_markup=menu(update, context))
     else:
-        update.message.reply_text(f'Не правильно, вот корректный ответ {decoded_answer}')
+        update.message.reply_text('Не правильно, попробуйте еще раз, либо нажмите сдаться чтобы увидеть правильный ответ', reply_markup=menu(update, context))
+    return CHECK
 
 
-def button(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    user_id = query.from_user.id
-    if query.data == '1':
-        folder = 'quiz-questions/'
-        qestion, answer = random.choice(list(fetch_victorins(folder).items()))
-        redis_base.set(user_id, qestion)
-        redis_base.set(qestion, answer)
-        query.edit_message_text(text=f"{qestion}")
+def handle_new_question_request(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    folder = 'quiz-questions/'
+    qestion, answer = random.choice(list(fetch_victorins(folder).items()))
+    redis_base.set(user_id, qestion)
+    redis_base.set(qestion, answer)
+    update.message.reply_text(text=f"{qestion}", reply_markup=menu(update, context))
+    return CHECK
+
+
+def handle_giveup(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    question = redis_base.get(user_id)
+    answer = redis_base.get(question)
+    decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
+    update.message.reply_text(text=f"Правильный ответ это: {decoded_answer}", reply_markup=menu(update, context))
+    return QUISTION
+
+
+def score(update: Update, context: CallbackContext) -> int:
+    #ToDO
+    
+    return ConversationHandler.END
 
 
 def fetch_victorins(folder):
@@ -83,11 +99,24 @@ def fetch_victorins(folder):
     return victorina_quiz
 
 
+def cancel(update: Update, context: CallbackContext):
+    """
+    User cancelation function.
+    Cancel conersation by user.
+    """
+    user = update.message.from_user
+    logger.info("User {} canceled the conversation.".format(user.first_name))
+    update.message.reply_text('Завершение викторины',
+                              reply_markup=ReplyKeyboardRemove())
+
+    return ConversationHandler.END
 
 
-def error(bot, update, error):
+def handle_error(update: Update, context: CallbackContext):
     """Log Errors caused by Updates."""
-    logger.warning('Update "%s" caused error "%s"', update, error)
+    logger.warning(
+        f'Update {update} caused error {context.error},traceback {context.error.__traceback__}'
+        )
 
 
 def main():
@@ -99,7 +128,7 @@ def main():
     redis_pass = os.getenv('REDDIS_PASS')
     folder = 'quiz-questions/'
     victorins= fetch_victorins(folder)
-    global redis_base
+    #global redis_base
     redis_base = redis.Redis(host=redis_host, port=redis_port, password=redis_pass)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
@@ -109,12 +138,26 @@ def main():
     logger.setLevel(logging.DEBUG)
     logger.addHandler(TelegramLogsHandler(tg_bot=logging_bot, chat_id=user_id))
     logger.info(f'Quiz bot запущен')
+    logger.info(redis_base)
     """Start the bot."""
     updater = Updater(token)
     dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CallbackQueryHandler(button))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, check_messages))
+    partial_new_question_request = partial(handle_new_question_request, redis_base=redis_base)
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            QUISTION: [MessageHandler(Filters.regex("^(Новый вопрос)$"), partial_new_question_request())],
+            CHECK: [
+                MessageHandler(Filters.regex("^(Новый вопрос)$"), handle_new_question_request),
+                MessageHandler(Filters.regex("^(Сдаться)$"), handle_giveup),
+                MessageHandler(Filters.text & ~Filters.command, handle_solution_attempt),
+                ],
+            SCORE: [MessageHandler(Filters.regex("^(Мой счет)$"), score)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+    dispatcher.add_handler(conv_handler)
+    dispatcher.add_error_handler(handle_error)
     updater.start_polling()
     updater.idle()
 
