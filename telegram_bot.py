@@ -34,24 +34,25 @@ def start(update: Update, context: CallbackContext) -> None:
 def check_messages(update: Update, context: CallbackContext) -> None:
     """Handle the answer on the user message."""
     user_id = update.message.from_user.id
-    answer = redis_base.get(user_id)
-    logger.info(answer)
-    if update.message.text==answer:
+    question = redis_base.get(user_id)
+    answer = redis_base.get(question)
+    decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
+    logger.info(decoded_answer)
+    if update.message.text == decoded_answer:
         update.message.reply_text('Правильно!')
     else:
-        update.message.reply_text(f'Не правильно, вот корректный ответ {answer}')
+        update.message.reply_text(f'Не правильно, вот корректный ответ {decoded_answer}')
 
 
 def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     user_id = query.from_user.id
     if query.data == '1':
-        logger.info(f'{query.data} in if')
         folder = 'quiz-questions/'
-        key, value = random.choice(list(fetch_victorins(folder).items()))
-        logger.info(f'{value}')
-        redis_base.set(user_id, key)
-        query.edit_message_text(text=f"{key}") 
+        qestion, answer = random.choice(list(fetch_victorins(folder).items()))
+        redis_base.set(user_id, qestion)
+        redis_base.set(qestion, answer)
+        query.edit_message_text(text=f"{qestion}")
 
 
 def fetch_victorins(folder):
