@@ -46,7 +46,7 @@ def handle_solution_attempt(update: Update, context: CallbackContext) -> None:
     return CHECK
 
 
-def handle_new_question_request(update: Update, context: CallbackContext) -> None:
+def handle_new_question_request(redis, update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     folder = 'quiz-questions/'
     qestion, answer = random.choice(list(fetch_victorins(folder).items()))
@@ -142,7 +142,7 @@ def main():
     """Start the bot."""
     updater = Updater(token)
     dispatcher = updater.dispatcher
-    partial_new_question_request = partial(handle_new_question_request, redis_base=redis_base)
+    partial_new_question_request = partial(handle_new_question_request, redis=redis_base)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
