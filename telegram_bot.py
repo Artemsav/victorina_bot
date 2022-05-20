@@ -2,8 +2,8 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from telegram import Update, ForceReply, Bot, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, InlineQueryHandler, ConversationHandler
+from telegram import Update, Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
 from logging_handler import TelegramLogsHandler
 import random
 import redis
@@ -32,42 +32,50 @@ def start(update: Update, context: CallbackContext) -> None:
     return QUISTION
 
 
-def handle_solution_attempt(update: Update, context: CallbackContext) -> None:
+def handle_solution_attempt(
+    redis_base,
+    update: Update,
+    context: CallbackContext
+    ) -> None:
     """Handle the answer on the user message."""
     user_id = update.message.from_user.id
     question = redis_base.get(user_id)
     answer = redis_base.get(question)
     decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
-    logger.info(decoded_answer)
     if update.message.text == decoded_answer:
         update.message.reply_text('Правильно!', reply_markup=menu(update, context))
     else:
-        update.message.reply_text('Не правильно, попробуйте еще раз, либо нажмите сдаться чтобы увидеть правильный ответ', reply_markup=menu(update, context))
+        update.message.reply_text('Не правильно, попробуйте еще раз,\
+                                  либо нажмите сдаться чтобы\
+                                  увидеть правильный ответ',
+                                  reply_markup=menu(update, context)
+                                  )
     return CHECK
 
 
-def handle_new_question_request(redis_base, update: Update, context: CallbackContext) -> None:
+def handle_new_question_request(redis_base, victorins, update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
-    folder = 'quiz-questions/'
-    qestion, answer = random.choice(list(fetch_victorins(folder).items()))
+    qestion, answer = random.choice(list(victorins.items()))
     redis_base.set(user_id, qestion)
     redis_base.set(qestion, answer)
     update.message.reply_text(text=f"{qestion}", reply_markup=menu(update, context))
     return CHECK
 
 
-def handle_giveup(update: Update, context: CallbackContext) -> None:
+def handle_giveup(redis_base, update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     question = redis_base.get(user_id)
     answer = redis_base.get(question)
     decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
-    update.message.reply_text(text=f"Правильный ответ это: {decoded_answer}", reply_markup=menu(update, context))
+    update.message.reply_text(
+        text=f"Правильный ответ это: {decoded_answer}",
+        reply_markup=menu(update, context)
+                )
     return QUISTION
 
 
 def score(update: Update, context: CallbackContext) -> int:
-    #ToDO
-    
+    #ToDO    
     return ConversationHandler.END
 
 
@@ -75,11 +83,9 @@ def fetch_victorins(folder):
     victorina_quiz = {}
     quiestions = []
     answers = []
-    #os.listdir(folder)
-    all_victorins = [1]
+    all_victorins = os.listdir(folder)
     for victorin in all_victorins:
-        #os.path.join(folder, victorin)
-        with open('quiz-questions/9gag.txt', encoding='KOI8-R') as file:
+        with open(os.path.join(folder, victorin), encoding='KOI8-R') as file:
             text = file.read()
         raw_quiz = text.split(sep='\n\n')
         for chunk in raw_quiz:
@@ -90,12 +96,12 @@ def fetch_victorins(folder):
         quiest_answer = zip(quiestions, answers)
         for quiest, ans in quiest_answer:
             _, *quiestion = quiest.split(':\n')
-            if type(quiestion)==list:
+            if type(quiestion) == list:
                 quiestion = ' '.join(quiestion)
             _, *answer = ans.split(':')
-            if type(answer)==list:
+            if type(answer) == list:
                 answer = ''.join(answer)
-            victorina_quiz[quiestion]=answer
+            victorina_quiz[quiestion] = answer
     return victorina_quiz
 
 
@@ -126,9 +132,8 @@ def main():
     redis_host = os.getenv('REDDIS_HOST')
     redis_port = os.getenv('REDDIS_PORT')
     redis_pass = os.getenv('REDDIS_PASS')
-    folder = 'quiz-questions/'
+    folder = 'quiz-questions_2/'
     victorins= fetch_victorins(folder)
-    #global redis_base
     redis_base = redis.Redis(host=redis_host, port=redis_port, password=redis_pass)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
@@ -138,11 +143,12 @@ def main():
     logger.setLevel(logging.DEBUG)
     logger.addHandler(TelegramLogsHandler(tg_bot=logging_bot, chat_id=user_id))
     logger.info(f'Quiz bot запущен')
-    logger.info(redis_base)
     """Start the bot."""
     updater = Updater(token)
     dispatcher = updater.dispatcher
-    partial_new_question_request = partial(handle_new_question_request, redis_base)
+    partial_new_question_request = partial(handle_new_question_request, redis_base, victorins)
+    partial_handle_solution_attempt = partial(handle_solution_attempt, redis_base)
+    partial_handle_giveup = partial(handle_giveup, redis_base)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -152,9 +158,15 @@ def main():
                     )
                 ],
             CHECK: [
-                MessageHandler(Filters.regex("^(Новый вопрос)$"), handle_new_question_request),
-                MessageHandler(Filters.regex("^(Сдаться)$"), handle_giveup),
-                MessageHandler(Filters.text & ~Filters.command, handle_solution_attempt),
+                MessageHandler(
+                    Filters.regex("^(Новый вопрос)$"), partial_new_question_request
+                    ),
+                MessageHandler(
+                    Filters.regex("^(Сдаться)$"), partial_handle_giveup
+                    ),
+                MessageHandler(
+                    Filters.text & ~Filters.command, partial_handle_solution_attempt
+                    ),
                 ],
             SCORE: [MessageHandler(Filters.regex("^(Мой счет)$"), score)],
         },
@@ -167,5 +179,4 @@ def main():
 
 
 if __name__ == '__main__':
-    #fetch_victorins('quiz-questions/')
     main()
