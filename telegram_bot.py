@@ -1,13 +1,16 @@
 import logging
 import os
-
-from dotenv import load_dotenv
-from telegram import Update, Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
-from logging_handler import TelegramLogsHandler
 import random
-import redis
 from functools import partial
+
+import redis
+from dotenv import load_dotenv
+from telegram import Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
+                          Filters, MessageHandler, Updater)
+
+from load_victorins import fetch_victorins
+from logging_handler import TelegramLogsHandler
 
 logger = logging.getLogger(__name__)
 
@@ -79,32 +82,6 @@ def score(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 
-def fetch_victorins(folder):
-    victorina_quiz = {}
-    quiestions = []
-    answers = []
-    all_victorins = os.listdir(folder)
-    for victorin in all_victorins:
-        with open(os.path.join(folder, victorin), encoding='KOI8-R') as file:
-            text = file.read()
-        raw_quiz = text.split(sep='\n\n')
-        for chunk in raw_quiz:
-            if 'Вопрос ' in chunk:
-                quiestions.append(chunk)
-            if 'Ответ:' in chunk:
-                answers.append(chunk)
-        quiest_answer = zip(quiestions, answers)
-        for quiest, ans in quiest_answer:
-            _, *quiestion = quiest.split(':\n')
-            if type(quiestion) == list:
-                quiestion = ' '.join(quiestion)
-            _, *answer = ans.split(':')
-            if type(answer) == list:
-                answer = ''.join(answer)
-            victorina_quiz[quiestion] = answer
-    return victorina_quiz
-
-
 def cancel(update: Update, context: CallbackContext):
     """
     User cancelation function.
@@ -132,8 +109,8 @@ def main():
     redis_host = os.getenv('REDDIS_HOST')
     redis_port = os.getenv('REDDIS_PORT')
     redis_pass = os.getenv('REDDIS_PASS')
-    folder = 'quiz-questions_2/'
-    victorins= fetch_victorins(folder)
+    folder = os.getenv('FOLDER')
+    victorins = fetch_victorins(folder)
     redis_base = redis.Redis(host=redis_host, port=redis_port, password=redis_pass)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
@@ -142,7 +119,7 @@ def main():
             )
     logger.setLevel(logging.DEBUG)
     logger.addHandler(TelegramLogsHandler(tg_bot=logging_bot, chat_id=user_id))
-    logger.info(f'Quiz bot запущен')
+    logger.info('Quiz tg bot запущен')
     """Start the bot."""
     updater = Updater(token)
     dispatcher = updater.dispatcher
