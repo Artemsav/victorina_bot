@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 QUISTION, CHECK = range(2)
 
 
-def menu() -> None:
+def create_menu() -> None:
     keyboard = [
         [
             "Новый вопрос",
@@ -32,7 +32,9 @@ def menu() -> None:
 
 
 def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Привет! Я бот для викторин', reply_markup=menu(update, context))
+    update.message.reply_text(
+        'Привет! Я бот для викторин',
+        reply_markup=create_menu(update, context))
 
     return QUISTION
 
@@ -48,12 +50,16 @@ def handle_solution_attempt(
     answer = redis_base.get(question)
     decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
     if update.message.text == decoded_answer:
-        update.message.reply_text('Правильно!', reply_markup=menu(update, context))
+        update.message.reply_text(
+            'Правильно!',
+            reply_markup=create_menu(update, context)
+            )
     else:
-        update.message.reply_text('Не правильно, попробуйте еще раз,\
-                                  либо нажмите сдаться чтобы\
-                                  увидеть правильный ответ',
-                                  reply_markup=menu(update, context)
+        update.message.reply_text(
+            'Не правильно, попробуйте еще раз,\
+            либо нажмите сдаться чтобы\
+            увидеть правильный ответ',
+            reply_markup=create_menu(update, context)
                                   )
     return CHECK
 
@@ -63,7 +69,7 @@ def handle_new_question_request(redis_base, quizs, update: Update, context: Call
     qestion, answer = random.choice(list(quizs.items()))
     redis_base.set(user_id, qestion)
     redis_base.set(qestion, answer)
-    update.message.reply_text(text=f"{qestion}", reply_markup=menu(update, context))
+    update.message.reply_text(text=f"{qestion}", reply_markup=create_menu(update, context))
     return CHECK
 
 
@@ -74,7 +80,7 @@ def handle_giveup(redis_base, update: Update, context: CallbackContext) -> None:
     decoded_answer, *_ = answer.decode('utf-8').strip('\n').strip('"').split('.')
     update.message.reply_text(
         text=f"Правильный ответ это: {decoded_answer}",
-        reply_markup=menu(update, context)
+        reply_markup=create_menu(update, context)
                 )
     return QUISTION
 
