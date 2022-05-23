@@ -66,11 +66,6 @@ def handle_solution_attempt(event, vk_api, keyboard, redis_base):
             )
 
 
-def score():
-    #ToDo
-    pass
-
-
 def main():
     load_dotenv()
     token = os.getenv('VK_KEY')
@@ -125,8 +120,6 @@ def main():
                         )
                 elif event.text == 'Сдаться':
                     handle_giveup(event, vk_api, keyboard, redis_base)
-                elif event.text == 'Получить счет':
-                    score()
                 elif event.text:
                     handle_solution_attempt(
                         event,

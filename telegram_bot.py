@@ -14,10 +14,10 @@ from logging_handler import TelegramLogsHandler
 
 logger = logging.getLogger(__name__)
 
-QUISTION, SCORE, CHECK = range(3)
+QUISTION, CHECK = range(2)
 
 
-def menu(update: Update, context: CallbackContext) -> None:
+def menu() -> None:
     keyboard = [
         [
             "Новый вопрос",
@@ -77,11 +77,6 @@ def handle_giveup(redis_base, update: Update, context: CallbackContext) -> None:
         reply_markup=menu(update, context)
                 )
     return QUISTION
-
-
-def score(update: Update, context: CallbackContext) -> int:
-    #ToDO    
-    return ConversationHandler.END
 
 
 def cancel(update: Update, context: CallbackContext):
@@ -147,7 +142,6 @@ def main():
                     Filters.text & ~Filters.command, partial_handle_solution_attempt
                     ),
                 ],
-            SCORE: [MessageHandler(Filters.regex("^(Мой счет)$"), score)],
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
