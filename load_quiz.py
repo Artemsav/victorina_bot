@@ -1,7 +1,7 @@
 import os
 
 
-def fetch_victorins(folder):
+def fetch_quiz(folder):
     victorina_quiz = {}
     quiestions = []
     answers = []

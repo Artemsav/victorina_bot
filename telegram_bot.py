@@ -9,7 +9,7 @@ from telegram import Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
                           Filters, MessageHandler, Updater)
 
-from load_victorins import fetch_victorins
+from load_quiz import fetch_quiz
 from logging_handler import TelegramLogsHandler
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,11 @@ def menu(update: Update, context: CallbackContext) -> None:
     keyboard = [
         [
             "Новый вопрос",
-            "Сдаться", 
+            "Сдаться",
             ],
-            ["Мой счет"]
+        [
+            "Мой счет"
+            ]
         ]
     reply_markup = ReplyKeyboardMarkup(keyboard)
     return reply_markup
@@ -56,9 +58,9 @@ def handle_solution_attempt(
     return CHECK
 
 
-def handle_new_question_request(redis_base, victorins, update: Update, context: CallbackContext) -> None:
+def handle_new_question_request(redis_base, quizs, update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
-    qestion, answer = random.choice(list(victorins.items()))
+    qestion, answer = random.choice(list(quizs.items()))
     redis_base.set(user_id, qestion)
     redis_base.set(qestion, answer)
     update.message.reply_text(text=f"{qestion}", reply_markup=menu(update, context))
@@ -110,7 +112,7 @@ def main():
     redis_port = os.getenv('REDDIS_PORT')
     redis_pass = os.getenv('REDDIS_PASS')
     folder = os.getenv('FOLDER')
-    victorins = fetch_victorins(folder)
+    quizs = fetch_quiz(folder)
     redis_base = redis.Redis(host=redis_host, port=redis_port, password=redis_pass)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
@@ -123,7 +125,7 @@ def main():
     """Start the bot."""
     updater = Updater(token)
     dispatcher = updater.dispatcher
-    partial_new_question_request = partial(handle_new_question_request, redis_base, victorins)
+    partial_new_question_request = partial(handle_new_question_request, redis_base, quizs)
     partial_handle_solution_attempt = partial(handle_solution_attempt, redis_base)
     partial_handle_giveup = partial(handle_giveup, redis_base)
     conv_handler = ConversationHandler(

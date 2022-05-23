@@ -1,24 +1,25 @@
 import logging
 import os
-import time
 import random
+import time
 
+import redis
 import vk_api as vk
 from dotenv import load_dotenv
-from vk_api.longpoll import VkEventType, VkLongPoll
-from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-from vk_api.utils import get_random_id
 from telegram import Bot
+from vk_api.keyboard import VkKeyboard, VkKeyboardColor
+from vk_api.longpoll import VkEventType, VkLongPoll
+from vk_api.utils import get_random_id
+
+from load_quiz import fetch_quiz
 from logging_handler import TelegramLogsHandler
-from load_victorins import fetch_victorins
-import redis
 
 logger = logging.getLogger(__name__)
 
 
-def handle_new_question_request(event, vk_api, keyboard, victorins, redis_base):
+def handle_new_question_request(event, vk_api, keyboard, quizs, redis_base):
     user_id = event.user_id
-    qestion, answer = random.choice(list(victorins.items()))
+    qestion, answer = random.choice(list(quizs.items()))
     redis_base.set(user_id, qestion)
     redis_base.set(qestion, answer)
     vk_api.messages.send(
@@ -85,7 +86,7 @@ def main():
         )
     logging_bot = Bot(token=logging_token)
     folder = os.getenv('FOLDER')
-    victorins = fetch_victorins(folder)
+    quizs = fetch_quiz(folder)
     logging.basicConfig(
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
@@ -119,7 +120,7 @@ def main():
                         event,
                         vk_api,
                         keyboard,
-                        victorins,
+                        quizs,
                         redis_base
                         )
                 elif event.text == 'Сдаться':
